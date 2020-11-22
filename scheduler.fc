@@ -1,0 +1,245 @@
+
+;; @dev Load and parse contract storage
+;; @return seqno - uint32
+;; @return pubkey - uint256
+;; @return next_call_time - uint32 - time of the next scheduled event
+;; @return scheduled_tasks - dict(uint64->cell) - dictionary with event messages
+
+(int, int, int, cell) load_storage() {
+  slice storage_data = begin_parse(get_data());
+  return (
+          storage_data~load_uint(32),    ;; seqno
+          storage_data~load_uint(256),   ;; pubkey
+          storage_data~load_uint(32),    ;; next_call_time
+          storage_data~load_dict()       ;; scheduled_tasks
+         );
+}
+
+;; @dev Serialize and store contract storage
+;; @param seqno - uint32
+;; @param pubkey - uint256
+;; @param next_call_time - uint32 - time of the next scheduled event
+;; @param scheduled_tasks - dict(uint64->cell) - dictionary with event messages
+
+() save_storage(int seqno, int pubkey, int next_call_time, cell scheduled_tasks) impure {
+  set_data(
+           begin_cell()
+             .store_uint(seqno, 32)
+             .store_uint(pubkey, 256)
+             .store_uint(next_call_time, 32)
+             .store_dict(scheduled_tasks)
+           .end_cell()
+          );
+}
+
+;; @dev Get the ready to send message and rewrite gram value and 
+;;      currencyCollection with specified amount
+;; @param order_message - slice
+;; @param nanograms - uint256
+;; @param other_currencies - cell - currencyCollection
+
+cell set_amount(slice order_message, int nanograms, cell other_currencies) inline {
+  int flags = order_message~load_uint(4);
+  (slice source_addr, 
+   slice destination_addr, 
+   int old_grams, 
+   cell old_curr)          = 
+                            (order_message~load_msg_addr(),
+                             order_message~load_msg_addr(),
+                             order_message~load_grams(),
+                             order_message~load_dict());
+  return begin_cell()
+         .store_int(flags << 2, 6) ;; + null_addr
+         .store_slice(destination_addr)
+         .store_grams(nanograms)
+         .store_dict(other_currencies)
+         .store_slice(order_message)
+        .end_cell();
+}
+
+
+;; @dev Generate message which will bounce back (sent to non-existing address)
+;; @param delay - uint256 - depending on delay we send message to different 
+;;                          addresses thus changing iteration time
+
+(cell) generate_autobounce_message () inline {
+  int loop_amount = 33554431;
+  return begin_cell()
+           .store_uint(28, 6) ;; identificator=0, instantHypercubeRouting=1, bounce=1, bounce=1, null_addr=00
+           .store_uint(1024, 11) ;; addr_std$10 anycast:(Maybe Anycast) workchain_id:int8
+           .store_uint(0, 256)
+           .store_grams(loop_amount)
+           .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1) ;; othercurr, fees, created_lt, created_at
+          .end_cell();
+}
+
+
+;; @dev Checks and operations of each loop step:
+;;        check whether there are timers to trigger
+;;        check whether to start next loop cycle
+
+() loop_body () impure {
+  accept_message();
+  (int seqno, 
+   int pubkey, 
+   int next_call_time, 
+   cell scheduled_tasks) = load_storage();
+  int ts = now();
+  if( next_call_time == 0) {
+    return ();
+  }
+    
+  if (next_call_time < ts) {
+      ;; There are scheduled messages send them
+      int t = (ts + 1) << 32; ;; In schedule table indexes are timestamp << 32 + integer index
+  
+      int index = 0;
+      do {
+        var (scheduled_tasks', index, order, found) = scheduled_tasks.udict_delete_get_min_ref?(64);
+        found~touch();
+        if (found) {
+           found = (index < t);
+        }
+        if (found) {
+           scheduled_tasks = scheduled_tasks';           
+           send_raw_message(order, 3);
+        }        
+      } until (~ found);
+      (int _next_t, cell _unused, int found) = scheduled_tasks.udict_get_min_ref?(64);
+      if (found) {
+        next_call_time = _next_t >> 32;
+      } else {
+        next_call_time = 0;
+      }
+  }
+  if(next_call_time > 0) {
+    send_raw_message( generate_autobounce_message(), 3 );
+  }
+  save_storage(seqno, pubkey, next_call_time, scheduled_tasks);
+}
+
+;; @dev modifying method - Add order to schedule tasks dictionary
+;; @param scheduled_tasks - cell - schedule tasks dictionary
+;; @param schedule_time - int32 - timestamp of scheduled event
+;; @param order - cell - message which should be sent on time
+
+(cell, ()) ~add_scheduled_order (cell scheduled_tasks, int schedule_time, cell order) inline {
+  int schedule_index = schedule_time << 32;
+  if(scheduled_tasks.dict_empty?() == 0) {
+    do {
+      schedule_index += 1;
+      (cell value, int found) = scheduled_tasks.udict_get_ref?(64, schedule_index);
+    } until ( ~ found );
+  }
+  scheduled_tasks~udict_set_ref(64, schedule_index, order);
+  return (scheduled_tasks, ());
+}
+
+;; @dev Schedule timer
+;; @param schedule_time - int32 - timestamp of scheduled event
+;; @param order_message_cell - cell - message which should be sent on time
+;; @param current_ts - int32 - now() - microoptimization
+
+() schedule_timer (int schedule_time, cell order_message_cell, int current_ts) impure {
+  if(current_ts >= schedule_time) {
+    ;; immediately send and return
+    send_raw_message(order_message_cell, 3);
+    return ();
+  }
+  
+  (int seqno, 
+   int pubkey, 
+   int next_call_time, 
+   cell scheduled_tasks) = load_storage();
+
+  scheduled_tasks~add_scheduled_order(schedule_time, order_message_cell);
+  if(next_call_time == 0) {
+      ;; there was no running loop, start one
+      next_call_time = schedule_time;
+      send_raw_message( generate_autobounce_message(), 3 );
+  }
+
+  if(next_call_time > schedule_time) {
+    next_call_time = schedule_time;
+  }
+  save_storage(seqno, pubkey, next_call_time, scheduled_tasks);
+}
+
+;; @dev General handler of internal messages
+;;      we expect two types of internal messages:
+;;        a) bounces from y:xxx..000000 - our inner loop iteration triggers
+;;        b) requests for new scheduling
+
+() recv_internal (int msg_value, cell in_msg_cell, slice in_msg) impure {
+  var cs = in_msg_cell.begin_parse();
+  var flags = cs~load_uint(4);  ;; int_msg_info$0 ihr_disabled:Bool bounce:Bool bounced:Bool
+  (var s_addr,
+   int addr_int_first_part, 
+   int addr_int_second_part) = (cs~load_bits(11), 
+                                cs~load_uint(64), 
+                                cs~load_uint(192));
+  
+  if(addr_int_second_part == 0) {
+      ;; It is our loop message
+      loop_body();
+  } else { if (in_msg.slice_empty?()) {
+    ;; Do nothing: donation
+  } else {
+    ;; it is order for scheduling
+
+    throw_if(101, flags & 1); ;; Do not process bounced messages
+
+    ;; we read params of order: value, schedule_time and message
+    ;; then we deduce our storage fee and store the message
+
+    slice our_address  = cs~load_msg_addr();
+    int nanograms = cs~load_grams();
+    cell other_currencies = cs~load_dict();
+    int schedule_time = in_msg~load_uint(32);
+    slice order_message = in_msg~load_ref().begin_parse();
+    
+    (int cell_num, int bit_num, int ref_num) = order_message.slice_compute_data_size(32);
+    
+    int ts = now();
+    if(ts > schedule_time) {
+      schedule_time = ts;
+    }
+    ;; service fee 0.1 GR + storage fee
+    int fee = 100000000 + (cell_num * 1000 + bit_num * 2) * (schedule_time - ts);
+
+    throw_if(102, nanograms < fee);
+    
+    
+    cell order_message_cell = set_amount(order_message, nanograms - fee, other_currencies);
+    schedule_timer(schedule_time, order_message_cell, ts);
+  } }
+}
+
+
+;; @dev General handler of external messages
+;;      Scheduler is working in automated regime
+;;      generally external control messages are not expected
+;;      however in case of future necessity we put authentication code here
+
+() recv_external (slice in_msg) impure {
+  (int seqno, 
+   int pubkey, 
+   int next_call_time, 
+   cell scheduled_tasks) = load_storage();
+
+  ;; This is controll call from owner, check seqno and signature
+  var signature = in_msg~load_bits(512);
+  var cs = in_msg;
+  int msg_seqno = cs~load_uint(32);
+  throw_unless(33, msg_seqno == seqno);
+  seqno = seqno + 1;
+  throw_unless(34, check_signature(slice_hash(in_msg), signature, pubkey));
+  save_storage(seqno, pubkey, next_call_time, scheduled_tasks);
+  accept_message();
+  
+  ;; Execute controll call
+  int operation = cs~load_uint(32);
+  if (operation == 0) {
+    send_raw_message( generate_autobounce_message(), 3);
+  }
+}

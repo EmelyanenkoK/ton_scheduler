@@ -1,0 +1,9 @@
+"TonUtil.fif" include
+1 =: bounce
+"0:eb8bf9fd50192ad627a10e3b49709053d892d8a1d3a67c821f7f754f2626b4fc" bounce parse-load-address =: bounce 2=: dest_addr
+<b b{01} s, bounce 1 i, b{000100} s, dest_addr addr, 1 Gram, 0 9 64 32 + + 1+ 1+ u, b> =: return_message
+
+
+now 60 + =: timer
+<b timer 32 u, return_message ref, b> 2 boc+>B
+"schedule.boc" tuck B>file

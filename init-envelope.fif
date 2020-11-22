@@ -1,0 +1,47 @@
+"Asm.fif" include
+"TonUtil.fif" include
+0 =: nonce
+
+<{
+SETCP0 ACCEPT
+nonce INT
+"scheduler.fif" include PUSHREF SETCODE
+}>s =: contract_code
+
+
+0 // random_int
+0 // false
+  {
+    1+
+    dup
+    <b 0 32 u, 0 256 u, 0 32 u, dictnew dict, swap 32 u, b>
+    <b b{00110} s, <b contract_code s, b> ref, swap ref, b>
+    hashu
+    115339776388732929035197660848497720713218148788040405586178452820382218977279 >
+  }
+until
+=: random_int
+
+
+
+
+<b 0 32 u, 0 256 u, 0 32 u, dictnew dict, random_int 32 u, b> =: contract_storage
+0 =: wc
+
+<b b{00110} s, <b contract_code s, b> ref, contract_storage ref, b>
+dup =: state_init
+dup hashu wc swap 2constant hub_addr
+
+."Contract address = " hub_addr .addr cr
+
+."Non-bounceable address (for init): " hub_addr 7 .Addr cr
+."Bounceable address (for later access): " hub_addr 6 .Addr cr
+
+
+<b b> <s =: init_message
+
+<b b{1000100} s, hub_addr addr, b{000010} s, state_init <s s, b{0} s, init_message s, b>
+2 boc+>B
+"contract-init.boc" tuck B>file
+."(Saved oracle hub contract creating query to file " type .")" cr
+

@@ -1,0 +1,299 @@
+"Asm.fif" include
+// automatically generated from `stdlib.fc` `scheduler.fc` 
+PROGRAM{
+  DECLPROC load_storage
+  DECLPROC save_storage
+  DECLPROC set_amount
+  DECLPROC generate_autobounce_message
+  DECLPROC loop_body
+  DECLPROC ~add_scheduled_order
+  DECLPROC schedule_timer
+  DECLPROC recv_internal
+  DECLPROC recv_external
+  load_storage PROC:<{
+    // 
+    c4 PUSH	//  _1
+    CTOS	//  storage_data
+    32 LDU	//  _3 storage_data
+    256 LDU	//  _3 _6 storage_data
+    32 LDU	//  _3 _6 _9 storage_data
+    LDDICT	//  _3 _6 _9 _21 _20
+    DROP	//  _3 _6 _9 _12
+  }>
+  save_storage PROC:<{
+    //  seqno pubkey next_call_time scheduled_tasks
+    s0 s3 XCHG
+    NEWC	//  scheduled_tasks pubkey next_call_time seqno _4
+    32 STU	//  scheduled_tasks pubkey next_call_time _6
+    s1 s2 XCHG	//  scheduled_tasks next_call_time pubkey _6
+    256 STU	//  scheduled_tasks next_call_time _8
+    32 STU	//  scheduled_tasks _10
+    STDICT	//  _11
+    ENDC	//  _12
+    c4 POP
+  }>
+  set_amount PROC:<{
+    //  order_message nanograms other_currencies
+    s0 s2 XCHG	//  other_currencies nanograms order_message
+    4 LDU	//  other_currencies nanograms flags order_message
+    LDMSGADDR	//  other_currencies nanograms flags _32 _31
+    NIP	//  other_currencies nanograms flags order_message
+    LDMSGADDR	//  other_currencies nanograms flags _13 order_message
+    LDGRAMS	//  other_currencies nanograms flags _13 _36 _35
+    NIP	//  other_currencies nanograms flags _13 order_message
+    LDDICT	//  other_currencies nanograms flags _13 _38 _37
+    NIP	//  other_currencies nanograms flags destination_addr order_message
+    s0 s2 XCHG	//  other_currencies nanograms order_message destination_addr flags
+    2 LSHIFT#	//  other_currencies nanograms order_message destination_addr _20
+    NEWC	//  other_currencies nanograms order_message destination_addr _20 _21
+    6 STI	//  other_currencies nanograms order_message destination_addr _23
+    SWAP	//  other_currencies nanograms order_message _23 destination_addr
+    STSLICER	//  other_currencies nanograms order_message _24
+    ROT	//  other_currencies order_message _24 nanograms
+    STGRAMS	//  other_currencies order_message _25
+    s1 s2 XCHG	//  order_message other_currencies _25
+    STDICT	//  order_message _26
+    SWAP	//  _26 order_message
+    STSLICER	//  _27
+    ENDC	//  _28
+  }>
+  generate_autobounce_message PROC:<{
+    // 
+    25 PUSHPOW2DEC	//  loop_amount=33554431
+    0 PUSHINT	//  loop_amount=33554431 _2=0
+    DUP	//  loop_amount=33554431 _2=0 _3=0
+    10 PUSHPOW2	//  loop_amount=33554431 _2=0 _3=0 _4=1024
+    28 PUSHINT	//  loop_amount=33554431 _2=0 _3=0 _4=1024 _5=28
+    NEWC	//  loop_amount=33554431 _2=0 _3=0 _4=1024 _5=28 _6
+    6 STU	//  loop_amount=33554431 _2=0 _3=0 _4=1024 _8
+    11 STU	//  loop_amount=33554431 _2=0 _3=0 _10
+    256 STU	//  loop_amount=33554431 _2=0 _12
+    ROT	//  _2=0 _12 loop_amount=33554431
+    STGRAMS	//  _2=0 _13
+    107 STU	//  _27
+    ENDC	//  _28
+  }>
+  loop_body PROC:<{
+    // 
+    ACCEPT
+    load_storage CALLDICT	//  seqno pubkey next_call_time scheduled_tasks
+    NOW	//  seqno pubkey next_call_time scheduled_tasks ts
+    s2 PUSH	//  seqno pubkey next_call_time scheduled_tasks ts next_call_time
+    0 EQINT	//  seqno pubkey next_call_time scheduled_tasks ts _9
+    IFJMP:<{	//  seqno pubkey next_call_time scheduled_tasks ts
+      5 BLKDROP	// 
+    }>	//  seqno pubkey next_call_time scheduled_tasks ts
+    s2 s0 PUSH2	//  seqno pubkey next_call_time scheduled_tasks ts next_call_time ts
+    LESS	//  seqno pubkey next_call_time scheduled_tasks ts _10
+    IF:<{	//  seqno pubkey next_call_time scheduled_tasks ts
+      1 2 BLKDROP2	//  seqno pubkey scheduled_tasks ts
+      INC	//  seqno pubkey scheduled_tasks _13
+      32 LSHIFT#	//  seqno pubkey scheduled_tasks t
+      UNTIL:<{
+        OVER
+        64 PUSHINT	//  seqno pubkey scheduled_tasks t scheduled_tasks _22=64
+        DICTUREMMINREF
+        NULLSWAPIFNOT
+        NULLSWAPIFNOT	//  seqno pubkey scheduled_tasks t scheduled_tasks' order index found
+        DUP	//  seqno pubkey scheduled_tasks t scheduled_tasks' order index found found
+        IF:<{	//  seqno pubkey scheduled_tasks t scheduled_tasks' order index found
+          DROP	//  seqno pubkey scheduled_tasks t scheduled_tasks' order index
+          s3 PUSH	//  seqno pubkey scheduled_tasks t scheduled_tasks' order index t
+          LESS	//  seqno pubkey scheduled_tasks t scheduled_tasks' order found
+        }>ELSE<{
+          NIP	//  seqno pubkey scheduled_tasks t scheduled_tasks' order found
+        }>
+        DUP	//  seqno pubkey scheduled_tasks t scheduled_tasks' order found found
+        IF:<{	//  seqno pubkey scheduled_tasks t scheduled_tasks' order found
+          s4 POP	//  seqno pubkey found t scheduled_tasks order
+          3 PUSHINT	//  seqno pubkey found t scheduled_tasks order _27=3
+          SENDRAWMSG
+          s0 s2 XCHG	//  seqno pubkey scheduled_tasks t found
+        }>ELSE<{
+          2 1 BLKDROP2	//  seqno pubkey scheduled_tasks t found
+        }>
+        NOT	//  seqno pubkey scheduled_tasks t _29
+      }>	//  seqno pubkey scheduled_tasks t
+      DROP	//  seqno pubkey scheduled_tasks
+      DUP
+      64 PUSHINT	//  seqno pubkey scheduled_tasks scheduled_tasks _33=64
+      DICTUMINREF
+      NULLSWAPIFNOT2	//  seqno pubkey scheduled_tasks _53 _52 _54
+      1 2 BLKDROP2	//  seqno pubkey scheduled_tasks _next_t found
+      IF:<{	//  seqno pubkey scheduled_tasks _next_t
+        32 RSHIFT#	//  seqno pubkey scheduled_tasks next_call_time
+      }>ELSE<{	//  seqno pubkey scheduled_tasks _next_t
+        DROP	//  seqno pubkey scheduled_tasks
+        0 PUSHINT	//  seqno pubkey scheduled_tasks next_call_time=0
+      }>
+      SWAP	//  seqno pubkey next_call_time scheduled_tasks
+    }>ELSE<{
+      DROP	//  seqno pubkey next_call_time scheduled_tasks
+    }>
+    OVER	//  seqno pubkey next_call_time scheduled_tasks next_call_time
+    0 GTINT	//  seqno pubkey next_call_time scheduled_tasks _39
+    IF:<{	//  seqno pubkey next_call_time scheduled_tasks
+      generate_autobounce_message INLINECALLDICT	//  seqno pubkey next_call_time scheduled_tasks _40
+      3 PUSHINT	//  seqno pubkey next_call_time scheduled_tasks _40 _41=3
+      SENDRAWMSG
+    }>	//  seqno pubkey next_call_time scheduled_tasks
+    save_storage CALLDICT
+  }>
+  ~add_scheduled_order PROC:<{
+    //  scheduled_tasks schedule_time order
+    SWAP	//  scheduled_tasks order schedule_time
+    32 LSHIFT#	//  scheduled_tasks order schedule_index
+    s2 PUSH	//  scheduled_tasks order schedule_index scheduled_tasks
+    DICTEMPTY	//  scheduled_tasks order schedule_index _6
+    0 EQINT	//  scheduled_tasks order schedule_index _8
+    IF:<{	//  scheduled_tasks order schedule_index
+      UNTIL:<{
+        INC	//  scheduled_tasks order schedule_index
+        s0 s2 PUSH2
+        64 PUSHINT	//  scheduled_tasks order schedule_index schedule_index scheduled_tasks _13=64
+        DICTUGETREF
+        NULLSWAPIFNOT	//  scheduled_tasks order schedule_index _19 _20
+        NIP	//  scheduled_tasks order schedule_index found
+        NOT	//  scheduled_tasks order schedule_index _15
+      }>	//  scheduled_tasks order schedule_index
+    }>	//  scheduled_tasks order schedule_index
+    ROT
+    64 PUSHINT	//  order schedule_index scheduled_tasks _17=64
+    DICTUSETREF	//  scheduled_tasks
+  }>
+  schedule_timer PROC:<{
+    //  schedule_time order_message_cell current_ts
+    s2 PUSH	//  schedule_time order_message_cell current_ts schedule_time
+    GEQ	//  schedule_time order_message_cell _3
+    IFJMP:<{	//  schedule_time order_message_cell
+      NIP	//  order_message_cell
+      3 PUSHINT	//  order_message_cell _4=3
+      SENDRAWMSG
+    }>	//  schedule_time order_message_cell
+    load_storage CALLDICT	//  schedule_time order_message_cell seqno pubkey next_call_time scheduled_tasks
+    s0 s5 s4 XCPUXC	//  schedule_time next_call_time seqno pubkey scheduled_tasks schedule_time order_message_cell
+    ~add_scheduled_order INLINECALLDICT	//  schedule_time next_call_time seqno pubkey scheduled_tasks
+    s3 PUSH	//  schedule_time next_call_time seqno pubkey scheduled_tasks next_call_time
+    0 EQINT	//  schedule_time next_call_time seqno pubkey scheduled_tasks _14
+    IF:<{	//  schedule_time next_call_time seqno pubkey scheduled_tasks
+      s3 POP	//  schedule_time scheduled_tasks seqno pubkey
+      s3 PUSH	//  schedule_time scheduled_tasks seqno pubkey next_call_time
+      generate_autobounce_message INLINECALLDICT	//  schedule_time scheduled_tasks seqno pubkey next_call_time _15
+      3 PUSHINT	//  schedule_time scheduled_tasks seqno pubkey next_call_time _15 _16=3
+      SENDRAWMSG
+      s0 s3 XCHG	//  schedule_time next_call_time seqno pubkey scheduled_tasks
+    }>	//  schedule_time next_call_time seqno pubkey scheduled_tasks
+    s3 s4 PUSH2	//  schedule_time next_call_time seqno pubkey scheduled_tasks next_call_time schedule_time
+    GREATER	//  schedule_time next_call_time seqno pubkey scheduled_tasks _18
+    IF:<{	//  schedule_time next_call_time seqno pubkey scheduled_tasks
+      s3 POP	//  next_call_time scheduled_tasks seqno pubkey
+      s2 s3 XCHG	//  scheduled_tasks next_call_time seqno pubkey
+    }>ELSE<{
+      s4 POP	//  scheduled_tasks next_call_time seqno pubkey
+    }>
+    s0 s0 s3 XCHG3	//  seqno pubkey next_call_time scheduled_tasks
+    save_storage CALLDICT
+  }>
+  recv_internal PROC:<{
+    //  msg_value in_msg_cell in_msg
+    s2 POP	//  in_msg in_msg_cell
+    CTOS	//  in_msg cs
+    4 LDU	//  in_msg flags cs
+    11 LDSLICE	//  in_msg flags _74 _73
+    NIP	//  in_msg flags cs
+    64 LDU	//  in_msg flags _76 _75
+    NIP	//  in_msg flags cs
+    192 LDU	//  in_msg flags addr_int_second_part cs
+    SWAP	//  in_msg flags cs addr_int_second_part
+    0 EQINT	//  in_msg flags cs _22
+    IF:<{	//  in_msg flags cs
+      3 BLKDROP	// 
+      loop_body CALLDICT
+    }>ELSE<{	//  in_msg flags cs
+      s2 PUSH	//  in_msg flags cs in_msg
+      SEMPTY	//  in_msg flags cs _24
+      IFNOT:<{	//  in_msg flags cs
+        SWAP
+        1 PUSHINT	//  in_msg cs flags _26=1
+        AND	//  in_msg cs _27
+        101 THROWIF
+        LDMSGADDR	//  in_msg _80 _79
+        NIP	//  in_msg cs
+        LDGRAMS	//  in_msg nanograms cs
+        LDDICT	//  in_msg nanograms _84 _83
+        DROP	//  in_msg nanograms other_currencies
+        s0 s2 XCHG	//  other_currencies nanograms in_msg
+        32 LDU	//  other_currencies nanograms schedule_time in_msg
+        LDREF	//  other_currencies nanograms schedule_time _88 _87
+        DROP	//  other_currencies nanograms schedule_time _43
+        CTOS	//  other_currencies nanograms schedule_time order_message
+        DUP
+        32 PUSHINT	//  other_currencies nanograms schedule_time order_message order_message _49=32
+        SDATASIZE	//  other_currencies nanograms schedule_time order_message _89 _90 _91
+        DROP	//  other_currencies nanograms schedule_time order_message cell_num bit_num
+        NOW	//  other_currencies nanograms schedule_time order_message cell_num bit_num ts
+        s0 s4 PUSH2	//  other_currencies nanograms schedule_time order_message cell_num bit_num ts ts schedule_time
+        GREATER	//  other_currencies nanograms schedule_time order_message cell_num bit_num ts _53
+        IF:<{	//  other_currencies nanograms schedule_time order_message cell_num bit_num ts
+          s4 POP	//  other_currencies nanograms ts order_message cell_num bit_num
+          s3 PUSH	//  other_currencies nanograms schedule_time order_message cell_num bit_num ts
+        }>	//  other_currencies nanograms schedule_time order_message cell_num bit_num ts
+        100000000 PUSHINT	//  other_currencies nanograms schedule_time order_message cell_num bit_num ts _55=100000000
+        s0 s3 XCHG
+        1000 PUSHINT	//  other_currencies nanograms schedule_time order_message _55=100000000 bit_num ts cell_num _56=1000
+        MUL	//  other_currencies nanograms schedule_time order_message _55=100000000 bit_num ts _57
+        s0 s2 XCHG	//  other_currencies nanograms schedule_time order_message _55=100000000 _57 ts bit_num
+        1 LSHIFT#	//  other_currencies nanograms schedule_time order_message _55=100000000 _57 ts _59
+        s1 s2 XCHG	//  other_currencies nanograms schedule_time order_message _55=100000000 ts _57 _59
+        ADD	//  other_currencies nanograms schedule_time order_message _55=100000000 ts _60
+        s4 s1 PUSH2	//  other_currencies nanograms schedule_time order_message _55=100000000 ts _60 schedule_time ts
+        SUB	//  other_currencies nanograms schedule_time order_message _55=100000000 ts _60 _61
+        MUL	//  other_currencies nanograms schedule_time order_message _55=100000000 ts _62
+        s1 s2 XCHG	//  other_currencies nanograms schedule_time order_message ts _55=100000000 _62
+        ADD	//  other_currencies nanograms schedule_time order_message ts fee
+        s4 s0 PUSH2	//  other_currencies nanograms schedule_time order_message ts fee nanograms fee
+        LESS	//  other_currencies nanograms schedule_time order_message ts fee _65
+        102 THROWIF
+        s1 s4 XCHG	//  other_currencies ts schedule_time order_message nanograms fee
+        SUB	//  other_currencies ts schedule_time order_message _68
+        s1 s0 s4 XCHG3	//  schedule_time ts order_message _68 other_currencies
+        set_amount INLINECALLDICT	//  schedule_time ts order_message_cell
+        SWAP	//  schedule_time order_message_cell ts
+        schedule_timer CALLDICT
+      }>ELSE<{
+        3 BLKDROP	// 
+      }>
+    }>
+  }>
+  recv_external PROC:<{
+    //  in_msg
+    load_storage CALLDICT	//  in_msg seqno pubkey next_call_time scheduled_tasks
+    s0 s4 XCHG
+    9 PUSHPOW2	//  scheduled_tasks seqno pubkey next_call_time in_msg _8=512
+    LDSLICEX	//  scheduled_tasks seqno pubkey next_call_time signature in_msg
+    DUP	//  scheduled_tasks seqno pubkey next_call_time signature in_msg cs
+    32 LDU	//  scheduled_tasks seqno pubkey next_call_time signature in_msg msg_seqno cs
+    s1 s6 XCPU	//  scheduled_tasks seqno pubkey next_call_time signature in_msg cs msg_seqno seqno
+    EQUAL	//  scheduled_tasks seqno pubkey next_call_time signature in_msg cs _16
+    33 THROWIFNOT
+    s0 s5 XCHG	//  scheduled_tasks cs pubkey next_call_time signature in_msg seqno
+    INC	//  scheduled_tasks cs pubkey next_call_time signature in_msg seqno
+    SWAP	//  scheduled_tasks cs pubkey next_call_time signature seqno in_msg
+    HASHSU	//  scheduled_tasks cs pubkey next_call_time signature seqno _21
+    s0 s2 s4 XC2PU	//  scheduled_tasks cs pubkey next_call_time seqno _21 signature pubkey
+    CHKSIGNU	//  scheduled_tasks cs pubkey next_call_time seqno _22
+    34 THROWIFNOT
+    s0 s3 XCHG
+    s0 s4 XCHG	//  cs seqno pubkey next_call_time scheduled_tasks
+    save_storage CALLDICT
+    ACCEPT
+    32 LDU	//  _44 _43
+    DROP	//  operation
+    0 EQINT	//  _31
+    IF:<{	// 
+      generate_autobounce_message INLINECALLDICT	//  _32
+      3 PUSHINT	//  _32 _33=3
+      SENDRAWMSG
+    }>	// 
+  }>
+}END>c
