@@ -1,4 +1,4 @@
-# Why this soultion for Timer smart contract is the best?
+# Why this solution for Timer smart contract is the best?
 **It is the cheapest solution (of those not based on tick-tock mechanism).**
 
 We spend a huge efforts to optimize computations (that is why contract is written in close to assembler low-level language) and to research possible options to make contract cheaper (see below). With cost <= 50 Gram/day we dare to say that it is the cheapest solution in the wild.
@@ -37,7 +37,7 @@ Upon developing we came to three possible solutions for bouncing.
 3. Use uninit contract at the bouncing side
 In first option one contract receive message and manually sends it back. However it is allways more expensive than sending to uninit contract (third option) since it requires at least some computations. Second one is idea to exploit one of the special contract to save some gas (since special contracts does not require gas for computations. In particular, it is possible to use "unknown query" https://github.com/ton-blockchain/ton/blob/master/crypto/smartcont/elector-code.fc#L668 response in elector contract. Indeed, this bounce does not require gas for computations and even save 0.01 gram for bounce. However costs of sending message to masterchain outweight advantages of this approach. That way autobounce from uninit account in basechain is a cheapest option.
 #### Exact account address for bounce
-We studied delays of sending messages from/to different shards. Generally there should be difference due to `next-hop` scheme of hypercube routing. Thus it principle it would possible to shorten/extend loop iteration duration by appropriate choice of destination shard. For instance if we know that next call is scheduled soon we will choose short iteration duration, otherwise we will choose longest duration by sending to most distant shard. Unfortunately, our study has shown, that for 16 shards (current number of shards in basechain) difference is negligible. So we didn't include code for iteration duration control into solution yet.
+We studied delays of sending messages from/to different shards. Generally there should be difference due to `next-hop` scheme of hypercube routing. Thus in principle it would be possible to shorten/extend loop iteration duration by appropriate choice of destination shard. For instance if we know that next call is scheduled soon we will choose short iteration duration, otherwise we will choose longest duration by sending to most distant shard. Unfortunately, our study has shown, that for 16 shards (current number of shards in basechain) difference is negligible. So we didn't include code for iteration duration control into solution yet.
 
 # Why FunC?
 There are bunch of languages and compillators supported by TON Labs which are more cosy and pleasant for developing complex smartcontracts. Why develop this contract in FunC? The pleasure of working with high-level languages comes at a price:
